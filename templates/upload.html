@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Upload PDF · AI Research Assistant{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <p class="eyebrow">Add your own paper</p>
+    <h1>Upload a PDF</h1>
+    <p>We’ll extract selectable text and propose the paper’s title, authors, year, and abstract. You can review and correct these details before continuing.</p>
+  </div>
+  <form class="form-panel" action="{{ url_for('upload_paper') }}" method="post" enctype="multipart/form-data">
+    <label for="pdf">Research paper PDF</label>
+    <input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required>
+    <p class="help">Maximum 16 MB. Text-based PDFs work best; scanned image-only PDFs are not supported yet.</p>
+    <button type="submit">Upload and extract details</button>
+  </form>
+{% endblock %}

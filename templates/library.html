@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}My library · AI Research Assistant{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <p class="eyebrow">Your collection</p>
+    <h1>My library</h1>
+    <p>Saved papers stay here when you refresh or restart the app.</p>
+  </div>
+  {% if papers %}
+    <div class="card-list">
+      {% for paper in papers %}
+        <article class="paper-card">
+          <div class="paper-topline">{{ paper.year or 'Year unavailable' }} · {{ paper.authors }}</div>
+          <h2><a href="{{ url_for('paper_detail', paper_id=paper.id) }}">{{ paper.title }}</a></h2>
+          <p class="abstract">{{ paper.abstract or 'Abstract unavailable.' }}</p>
+          <div class="actions"><a href="{{ url_for('paper_detail', paper_id=paper.id) }}">Open paper →</a></div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">Your library is empty. <a href="{{ url_for('index') }}">Search for a paper</a> to begin.</div>
+  {% endif %}
+{% endblock %}

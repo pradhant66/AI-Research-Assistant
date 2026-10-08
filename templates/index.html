@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Search papers · AI Research Assistant{% endblock %}
+{% block content %}
+  <section class="hero">
+    <p class="eyebrow">Discover research</p>
+    <h1>Find papers worth reading.</h1>
+    <p>Search scholarly work, save papers to your local library, and later analyze their full text.</p>
+    <form class="search-form" action="{{ url_for('index') }}" method="get">
+      <label for="query">Research topic or keywords</label>
+      <div class="search-row">
+        <input id="query" name="q" type="search" value="{{ query }}" placeholder="e.g. AI agents for software testing" required>
+        <button type="submit">Search papers</button>
+      </div>
+    </form>
+  </section>
+
+  {% if query %}
+    <section class="results" aria-live="polite">
+      <div class="section-heading">
+        <h2>Results for “{{ query }}”</h2>
+        <span>{{ papers|length }} shown</span>
+      </div>
+      {% if papers %}
+        <div class="card-list">
+          {% for paper in papers %}
+            <article class="paper-card">
+              <div class="paper-topline">{{ paper.year or 'Year unavailable' }} · {{ paper.authors }}</div>
+              <h3>{{ paper.title }}</h3>
+              <p class="abstract">{{ paper.abstract or 'Abstract unavailable from OpenAlex.' }}</p>
+              <div class="actions">
+                {% if paper.paper_url %}<a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">View paper ↗</a>{% endif %}
+                {% if paper.external_id in saved_ids %}
+                  <span class="saved">Saved in library</span>
+                {% else %}
+                  <form action="{{ url_for('save_paper', work_id=paper.work_id) }}" method="post">
+                    <input type="hidden" name="q" value="{{ query }}">
+                    <button type="submit" class="secondary">Save to library</button>
+                  </form>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">No papers found. Try a broader search phrase.</div>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title }} · AI Research Assistant{% endblock %}
+{% block content %}
+  <a class="back-link" href="{{ url_for('library') }}">← Back to library</a>
+  <article class="detail">
+    <p class="eyebrow">Saved paper</p>
+    <h1>{{ paper.title }}</h1>
+    <p class="paper-topline">{{ paper.authors }} · {{ paper.year or 'Year unavailable' }}</p>
+    {% if paper.paper_url %}<p><a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">Open original paper ↗</a></p>{% endif %}
+    <section class="detail-section">
+      <h2>Abstract</h2>
+      <p>{{ paper.abstract or 'Abstract unavailable.' }}</p>
+      <a href="{{ url_for('edit_paper', paper_id=paper.id) }}">Edit paper details</a>
+    </section>
+    {% if not paper.full_text %}
+      <section class="detail-section callout">
+        <h2>Add full paper text</h2>
+        <p>Summaries and answers require the paper's content. Add a PDF before analyzing this paper.</p>
+        {% if paper.pdf_url %}
+          <form action="{{ url_for('import_pdf', paper_id=paper.id) }}" method="post" class="inline-form">
+            <button type="submit">Import open-access PDF</button>
+          </form>
+        {% endif %}
+        <form action="{{ url_for('attach_pdf', paper_id=paper.id) }}" method="post" enctype="multipart/form-data" class="upload-inline">
+          <label for="pdf">Or upload your PDF</label>
+          <input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required>
+          <button type="submit" class="secondary">Attach PDF</button>
+        </form>
+      </section>
+    {% else %}
+      <section class="detail-section">
+        <h2>Summary</h2>
+        <form action="{{ url_for('summarize_paper', paper_id=paper.id) }}" method="post">
+          <button type="submit">{{ 'Regenerate summary' if paper.summary else 'Generate summary' }}</button>
+        </form>
+        {% if paper.summary %}<div class="analysis-output">{{ paper.summary }}</div>{% endif %}
+      </section>
+      <section class="detail-section">
+        <h2>Ask about this paper</h2>
+        <form action="{{ url_for('ask_paper', paper_id=paper.id) }}" method="post" class="question-form">
+          <label for="question">Your question</label>
+          <textarea id="question" name="question" rows="3" maxlength="500" placeholder="What is the paper's main contribution?" required>{{ question or '' }}</textarea>
+          <button type="submit">Ask question</button>
+        </form>
+        {% if answer %}
+          <div class="analysis-output"><strong>Answer</strong><p>{{ answer }}</p></div>
+        {% endif %}
+      </section>
+    {% endif %}
+  </article>
+{% endblock %}
