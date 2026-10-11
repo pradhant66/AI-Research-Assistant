@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import sqlite3
 import os
+import re
+import unicodedata
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
-from flask import Flask, abort, flash, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, send_file, url_for
 from werkzeug.utils import secure_filename
 
 from gemini_service import AnalysisError, answer_question, summarize
-from openalex import PaperSearchError, get_paper, search_papers
+from openalex import PaperSearchError, get_paper, get_pdf_urls, search_papers
 from pdf_tools import PDFProcessingError, extract_pdf
 
 
@@ -59,6 +61,30 @@ def init_db() -> None:
 init_db()
 
 
+def _paper_key(paper) -> tuple[str, int, str] | None:
+    """Match the same paper across PDF uploads and search records."""
+    if not paper["year"] or not paper["authors"] or paper["authors"] == "Authors unavailable":
+        return None
+    title = unicodedata.normalize("NFKD", paper["title"]).casefold()
+    author = unicodedata.normalize("NFKD", paper["authors"].split(",", 1)[0]).casefold()
+    title_words = re.findall(r"[a-z0-9]+", title)
+    author_words = re.findall(r"[a-z0-9]+", author)
+    if not title_words or not author_words:
+        return None
+    return (" ".join(title_words), int(paper["year"]), author_words[-1])
+
+
+def _matching_paper(db: sqlite3.Connection, paper):
+    key = _paper_key(paper)
+    if key is None:
+        return None
+    return next(
+        (row for row in db.execute("SELECT * FROM papers WHERE year = ?", (key[1],))
+         if _paper_key(row) == key),
+        None,
+    )
+
+
 @app.get("/")
 def index():
     query = request.args.get("q", "").strip()
@@ -70,10 +96,12 @@ def index():
             flash(str(exc), "error")
 
     with connect_db() as db:
-        saved_ids = {
-            row["external_id"]
-            for row in db.execute("SELECT external_id FROM papers WHERE external_id IS NOT NULL")
-        }
+        saved = db.execute("SELECT external_id, title, authors, year FROM papers").fetchall()
+        saved_ids = {row["external_id"] for row in saved if row["external_id"]}
+        saved_keys = {_paper_key(row) for row in saved} - {None}
+        saved_ids.update(
+            paper["external_id"] for paper in papers if _paper_key(paper) in saved_keys
+        )
     return render_template("index.html", query=query, papers=papers, saved_ids=saved_ids)
 
 
@@ -92,6 +120,15 @@ def save_paper(work_id: str):
         if existing:
             flash("This paper is already in your library.", "info")
             return redirect(url_for("paper_detail", paper_id=existing["id"]))
+        matching = _matching_paper(db, paper)
+        if matching:
+            if not matching["external_id"]:
+                db.execute(
+                    "UPDATE papers SET external_id = ?, paper_url = ?, pdf_url = ? WHERE id = ?",
+                    (paper["external_id"], paper["paper_url"], paper["pdf_url"], matching["id"]),
+                )
+            flash("This paper is already in your library.", "info")
+            return redirect(url_for("paper_detail", paper_id=matching["id"]))
         cursor = db.execute(
             """
             INSERT INTO papers (external_id, title, authors, year, abstract, paper_url, pdf_url)
@@ -113,6 +150,29 @@ def library():
     return render_template("library.html", papers=papers)
 
 
+@app.post("/papers/<int:paper_id>/remove")
+def remove_paper(paper_id: int):
+    with connect_db() as db:
+        paper = db.execute("SELECT pdf_path FROM papers WHERE id = ?", (paper_id,)).fetchone()
+        if paper is None:
+            abort(404)
+        db.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
+        pdf_in_use = bool(paper["pdf_path"] and db.execute(
+            "SELECT 1 FROM papers WHERE pdf_path = ? LIMIT 1", (paper["pdf_path"],)
+        ).fetchone())
+
+    if paper["pdf_path"] and not pdf_in_use:
+        path = Path(paper["pdf_path"]).resolve()
+        if path.is_relative_to(app.config["UPLOAD_FOLDER"].resolve()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                flash("Paper removed, but its stored PDF could not be deleted.", "error")
+                return redirect(url_for("library"))
+    flash("Paper removed from your library.", "success")
+    return redirect(url_for("library"))
+
+
 @app.get("/papers/<int:paper_id>")
 def paper_detail(paper_id: int):
     with connect_db() as db:
@@ -120,6 +180,19 @@ def paper_detail(paper_id: int):
     if paper is None:
         abort(404)
     return render_template("paper.html", paper=paper)
+
+
+@app.get("/papers/<int:paper_id>/pdf")
+def view_pdf(paper_id: int):
+    with connect_db() as db:
+        paper = db.execute("SELECT pdf_path FROM papers WHERE id = ?", (paper_id,)).fetchone()
+    if paper is None or not paper["pdf_path"]:
+        abort(404)
+    path = Path(paper["pdf_path"]).resolve()
+    upload_folder = app.config["UPLOAD_FOLDER"].resolve()
+    if not path.is_relative_to(upload_folder) or not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="application/pdf", as_attachment=False)
 
 
 def _save_pdf(file_storage) -> tuple[Path, dict]:
@@ -148,6 +221,18 @@ def upload_paper():
         flash(str(exc) if isinstance(exc, PDFProcessingError) else "Choose a PDF file.", "error")
         return redirect(url_for("upload_paper"))
     with connect_db() as db:
+        matching = _matching_paper(db, data)
+        if matching:
+            if matching["pdf_path"] and Path(matching["pdf_path"]).is_file():
+                path.unlink(missing_ok=True)
+                flash("This paper is already in your library.", "info")
+                return redirect(url_for("paper_detail", paper_id=matching["id"]))
+            db.execute(
+                "UPDATE papers SET pdf_path = ?, full_text = ?, summary = '' WHERE id = ?",
+                (str(path), data["full_text"], matching["id"]),
+            )
+            flash("PDF added to the paper already in your library.", "success")
+            return redirect(url_for("edit_paper", paper_id=matching["id"]))
         cursor = db.execute(
             """
             INSERT INTO papers (title, authors, year, abstract, pdf_path, full_text)
@@ -243,30 +328,42 @@ def import_pdf(paper_id: int):
     if urlparse(pdf_url).scheme != "https":
         flash("No direct open-access PDF is available. Upload one instead.", "error")
         return redirect(url_for("paper_detail", paper_id=paper_id))
+    urls = [pdf_url]
+    if paper["external_id"]:
+        work_id = paper["external_id"].rsplit("/", 1)[-1]
+        try:
+            urls.extend(url for url in get_pdf_urls(work_id) if url not in urls)
+        except PaperSearchError:
+            pass  # The saved URL may still work if OpenAlex is temporarily unavailable.
     folder = app.config["UPLOAD_FOLDER"]
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{uuid.uuid4().hex}.pdf"
-    try:
-        with requests.get(pdf_url, stream=True, timeout=20) as response:
-            response.raise_for_status()
-            size = 0
-            with path.open("wb") as output:
-                for chunk in response.iter_content(chunk_size=65536):
-                    size += len(chunk)
-                    if size > app.config["MAX_CONTENT_LENGTH"]:
-                        raise PDFProcessingError("The linked PDF is too large. Upload a smaller copy.")
-                    output.write(chunk)
-        data = extract_pdf(path)
-    except (requests.RequestException, PDFProcessingError) as exc:
+    for url in urls:
         path.unlink(missing_ok=True)
-        flash(str(exc) if isinstance(exc, PDFProcessingError) else "Could not download that PDF. Upload it instead.", "error")
+        try:
+            with requests.get(url, stream=True, timeout=20, headers={"User-Agent": "Mozilla/5.0 (compatible; AIResearchAssistant/0.1)"}) as response:
+                response.raise_for_status()
+                size = 0
+                with path.open("wb") as output:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        size += len(chunk)
+                        if size > app.config["MAX_CONTENT_LENGTH"]:
+                            raise PDFProcessingError("The linked PDF is too large.")
+                        output.write(chunk)
+            data = extract_pdf(path)
+            break
+        except (requests.RequestException, PDFProcessingError):
+            continue
+    else:
+        path.unlink(missing_ok=True)
+        flash("Available PDF links could not be imported. Upload a PDF copy instead.", "error")
         return redirect(url_for("paper_detail", paper_id=paper_id))
     with connect_db() as db:
         db.execute(
-            "UPDATE papers SET pdf_path = ?, full_text = ?, summary = '' WHERE id = ?",
-            (str(path), data["full_text"], paper_id),
+            "UPDATE papers SET pdf_url = ?, pdf_path = ?, full_text = ?, abstract = ?, summary = '' WHERE id = ?",
+            (url, str(path), data["full_text"], data["abstract"] or paper["abstract"], paper_id),
         )
-    flash("Open-access PDF imported and processed.", "success")
+    flash("An open-access PDF copy was imported and processed. Review the abstract and edit it if needed.", "success")
     return redirect(url_for("paper_detail", paper_id=paper_id))
 
 

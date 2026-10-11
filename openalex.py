@@ -40,7 +40,7 @@ def normalize_work(work: dict) -> dict:
         "year": work.get("publication_year"),
         "abstract": _abstract_from_index(work.get("abstract_inverted_index")),
         "paper_url": work.get("doi") or primary.get("landing_page_url") or work.get("id", ""),
-        "pdf_url": open_access.get("pdf_url") or "",
+        "pdf_url": open_access.get("pdf_url") or primary.get("pdf_url") or "",
     }
 
 
@@ -77,3 +77,17 @@ def get_paper(work_id: str) -> dict:
     if not WORK_ID.fullmatch(work_id):
         raise PaperSearchError("Invalid paper identifier.")
     return normalize_work(_get(f"{API_BASE}/{work_id}"))
+
+
+def get_pdf_urls(work_id: str) -> list[str]:
+    """Return distinct HTTPS PDF URLs from all OpenAlex locations for a work."""
+    if not WORK_ID.fullmatch(work_id):
+        raise PaperSearchError("Invalid paper identifier.")
+    work = _get(f"{API_BASE}/{work_id}")
+    locations = [work.get("best_oa_location") or {}, *(work.get("locations") or [])]
+    urls = []
+    for location in locations:
+        url = location.get("pdf_url") or ""
+        if url.startswith("https://") and url not in urls:
+            urls.append(url)
+    return urls

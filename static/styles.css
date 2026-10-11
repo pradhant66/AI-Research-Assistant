@@ -33,6 +33,11 @@ button.secondary:hover { background: #d3e8e1; }
 .actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .actions form { margin: 0; }
 .actions a { font-weight: 700; }
+.actions .remove-form { margin-left: auto; }
+.remove-icon { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #78898d; }
+.remove-icon svg { width: 18px; height: 18px; }
+.remove-icon:hover { background: #fff1ef; color: #a13c34; }
+.remove-icon:focus-visible { outline: 2px solid #155d5a; outline-offset: 2px; }
 .saved { color: #288067; font-weight: 700; }
 .empty, .notice { padding: 20px; border-radius: 12px; background: #fff; border: 1px solid #e0e7e5; }
 .notice { margin-bottom: 22px; }

@@ -6,7 +6,12 @@
     <p class="eyebrow">Saved paper</p>
     <h1>{{ paper.title }}</h1>
     <p class="paper-topline">{{ paper.authors }} · {{ paper.year or 'Year unavailable' }}</p>
-    {% if paper.paper_url %}<p><a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">Open original paper ↗</a></p>{% endif %}
+    {% if paper.pdf_path %}
+      <p><a href="{{ url_for('view_pdf', paper_id=paper.id) }}" target="_blank" rel="noopener noreferrer">View PDF ↗</a></p>
+    {% elif paper.pdf_url %}
+      <p><a href="{{ paper.pdf_url }}" target="_blank" rel="noopener noreferrer">View PDF ↗</a></p>
+    {% endif %}
+    {% if paper.paper_url %}<p><a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">View publication page ↗</a></p>{% endif %}
     <section class="detail-section">
       <h2>Abstract</h2>
       <p>{{ paper.abstract or 'Abstract unavailable.' }}</p>
@@ -37,6 +42,7 @@
       </section>
       <section class="detail-section">
         <h2>Ask about this paper</h2>
+        <p class="help">Your question and the paper's extracted text are sent to Gemini. For very long papers, the answer uses selected pages and says so.</p>
         <form action="{{ url_for('ask_paper', paper_id=paper.id) }}" method="post" class="question-form">
           <label for="question">Your question</label>
           <textarea id="question" name="question" rows="3" maxlength="500" placeholder="What is the paper's main contribution?" required>{{ question or '' }}</textarea>

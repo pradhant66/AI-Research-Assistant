@@ -13,7 +13,21 @@
           <div class="paper-topline">{{ paper.year or 'Year unavailable' }} · {{ paper.authors }}</div>
           <h2><a href="{{ url_for('paper_detail', paper_id=paper.id) }}">{{ paper.title }}</a></h2>
           <p class="abstract">{{ paper.abstract or 'Abstract unavailable.' }}</p>
-          <div class="actions"><a href="{{ url_for('paper_detail', paper_id=paper.id) }}">Open paper →</a></div>
+          <div class="actions">
+            <a href="{{ url_for('paper_detail', paper_id=paper.id) }}">Open details →</a>
+            {% if paper.pdf_path %}
+              <a href="{{ url_for('view_pdf', paper_id=paper.id) }}" target="_blank" rel="noopener noreferrer">View PDF ↗</a>
+            {% elif paper.pdf_url %}
+              <a href="{{ paper.pdf_url }}" target="_blank" rel="noopener noreferrer">View PDF ↗</a>
+            {% elif paper.paper_url %}
+              <a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">View source ↗</a>
+            {% endif %}
+            <form class="remove-form" action="{{ url_for('remove_paper', paper_id=paper.id) }}" method="post" onsubmit="return confirm('Remove this paper from your library? Its stored PDF, summary, and paper text will also be deleted.')">
+              <button type="submit" class="remove-icon" aria-label="Remove {{ paper.title }} from library" title="Remove from library">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 3h4l1 4H9l1-4ZM6 7l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+              </button>
+            </form>
+          </div>
         </article>
       {% endfor %}
     </div>

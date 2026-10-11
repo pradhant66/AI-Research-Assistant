@@ -7,6 +7,7 @@ import re
 
 
 MODEL = "gemini-3.5-flash-lite"
+MAX_QUESTION_TEXT_CHARS = 400_000
 
 
 class AnalysisError(Exception):
@@ -118,23 +119,34 @@ def answer_question(title: str, full_text: str, question: str) -> str:
     pages = _pages(full_text)
     if not pages:
         raise AnalysisError("This paper has no extracted full text to answer from.")
-    terms = {term for term in re.findall(r"[a-z]{4,}", question.lower()) if term not in {
-        "what", "which", "where", "when", "does", "this", "paper", "about", "were", "their",
-        "with", "from", "that", "have", "they", "using", "used", "main", "major",
-    }}
-    ranked = sorted(
-        pages,
-        key=lambda page: sum(page[1].lower().count(term) for term in terms),
-        reverse=True,
-    )
-    selected = {number: text for number, text in ranked[:4]}
-    selected[pages[0][0]] = pages[0][1]
-    context = "\n\n".join(
-        f"[Page {number}]\n{text[:9000]}" for number, text in pages if number in selected
-    )
+    if len(full_text) > MAX_QUESTION_TEXT_CHARS:
+        terms = {term for term in re.findall(r"[a-z]{4,}", question.lower()) if term not in {
+            "what", "which", "where", "when", "does", "this", "paper", "about", "were", "their",
+            "with", "from", "that", "have", "they", "using", "used", "main", "major",
+        }}
+        ranked = sorted(
+            pages,
+            key=lambda page: sum(page[1].lower().count(term) for term in terms),
+            reverse=True,
+        )
+        selected_numbers = {number for number, _ in ranked[:4]}
+        selected_numbers.add(pages[0][0])
+        excerpts = "\n\n".join(
+            f"[Page {number}]\n{text[:9000]}"
+            for number, text in pages if number in selected_numbers
+        )
+        answer = _generate(
+            "Answer using only the selected paper excerpts below. Cite the supplied page numbers. "
+            "These excerpts do not cover the entire paper. If they do not support an answer, "
+            "say you could not find it in the selected excerpts. Do not use outside knowledge.\n"
+            f"Title: {title}\nQuestion: {question}\nSelected excerpts:\n{excerpts}"
+        )
+        page_list = ", ".join(str(number) for number in sorted(selected_numbers))
+        return f"Note: This long paper was answered using selected pages ({page_list}), not its full text.\n\n{answer}"
     return _generate(
-        "Answer the question using only the paper passages below. Cite page numbers in your answer. "
-        "If the passages do not support an answer, say you could not find it in the supplied text. "
+        "Answer the question using only the complete extracted paper text below. "
+        "Cite the supplied page numbers in your answer. "
+        "If the paper text does not support an answer, say you could not find it in the supplied text. "
         "Do not use outside knowledge.\n"
-        f"Title: {title}\nQuestion: {question}\nPassages:\n{context}"
+        f"Title: {title}\nQuestion: {question}\nPaper text:\n{full_text}"
     )

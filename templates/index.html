@@ -28,7 +28,8 @@
               <h3>{{ paper.title }}</h3>
               <p class="abstract">{{ paper.abstract or 'Abstract unavailable from OpenAlex.' }}</p>
               <div class="actions">
-                {% if paper.paper_url %}<a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">View paper ↗</a>{% endif %}
+                {% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank" rel="noopener noreferrer">View PDF ↗</a>{% endif %}
+                {% if paper.paper_url %}<a href="{{ paper.paper_url }}" target="_blank" rel="noopener noreferrer">View paper page ↗</a>{% endif %}
                 {% if paper.external_id in saved_ids %}
                   <span class="saved">Saved in library</span>
                 {% else %}
