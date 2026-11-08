@@ -94,6 +94,41 @@ An external PDF link may open in a browser but block automatic downloading. If i
 
 The browser sends requests to Flask in `app.py`. Search reads OpenAlex; saving and uploading write to SQLite; PDF processing stores extracted text; summary and question actions send that text or labeled excerpts to Gemini. The app runs locally and does not require a GitHub account to use.
 
+## HW2 automated tests
+
+Activate the existing virtual environment, then install the test dependencies and run:
+
+```bash
+python -m pip install -r requirements-test.txt
+python -m pytest
+```
+
+To measure all four application modules, including branch coverage:
+
+```bash
+python -m pytest --cov --cov-branch --cov-report=term-missing --cov-report=html:htmlcov --cov-report=json:test-results/coverage.json
+```
+
+Open `htmlcov/index.html` to inspect uncovered lines and branches. The terminal's `Cover` column combines line and branch opportunities; the JSON report records separate counts. Coverage here measures Python code, not browser interactions or template coverage.
+
+The suite is in `tests/`: Flask/SQLite workflows and error paths, OpenAlex normalization and errors, real generated PDF extraction, and Gemini request construction/SDK handling. Database and PDF paths are temporary, including the application's database initialization at import. Tests remove the real Gemini key from their environment and replace external calls with controlled responses. They do not require an API key or downloaded papers. Mocked model responses do not establish the factual quality of real Gemini output.
+
+The experiment used an initial suite followed by two improvement rounds against unchanged application code:
+
+| Measure | Initial | Round 1 | Round 2 |
+| --- | --- | --- | --- |
+| Test cases | 49 | 62 | 106 |
+| Passed | 47 | 60 | 104 |
+| Failed | 2 | 2 | 2 |
+| Line coverage | 82.26% | 89.47% | 98.05% |
+| Branch coverage | 65.07% | 71.92% | 91.10% |
+
+Round 1 strengthens assertions and adds attachment, re-extraction, duplicate-upload, deletion, and detail-action tests. Round 2 targets uncovered SDK failures, PDF-import retries and limits, metadata fallbacks, and exact question-size boundaries.
+
+A subsequent final quality review consolidated an overlapping deletion test, removed a redundant assertion, improved timeout simulation, and strengthened preservation checks. The **current final suite contains 105 cases (67 functions): 103 passed and 2 failed**. It retains the same **98.05% line coverage and 91.10% branch coverage** against the unchanged application. The table above preserves the original three experiment stages. Measurements were recorded using Python 3.13.2, Pytest 9.2.0, pytest-cov 7.1.0, and coverage.py 7.17.2.
+
+The two failures document existing behavior: inline abstract text is missed, and summary processing silently truncates a single page longer than its chunk limit. These assertions remain enabled and a failing exit status is expected for the current application. They are `test_extracts_abstract_when_heading_and_body_share_a_line` in `tests/test_pdf_tools.py` and `test_summary_does_not_silently_drop_end_of_a_long_page` in `tests/test_gemini_service.py`. Neither is skipped or marked expected-to-fail. HW2 documents these detected defects; production fixes are outside the selected assignment scope. Existing SQLite connection ResourceWarnings are not suppressed by the suite. High coverage does not establish complete correctness: the Gemini module reaches 100% line coverage while the summary defect still fails its test.
+
 ## Limits
 
 - Scanned PDFs without selectable text need OCR and are not supported.

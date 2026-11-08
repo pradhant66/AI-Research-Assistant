@@ -10,3 +10,10 @@ instance/
 /DELIVERABLES.md
 /WORK_LOG.md
 /report_evidence/
+
+# Generated local test artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+test-results/

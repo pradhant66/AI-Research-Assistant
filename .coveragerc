@@ -1,0 +1,6 @@
+[run]
+branch = True
+source = app,openalex,pdf_tools,gemini_service
+
+[report]
+show_missing = True
